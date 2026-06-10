@@ -187,7 +187,7 @@ uint32_t cs43l22_Init(uint16_t DeviceAddr, uint16_t OutputDevice, uint8_t Volume
   /* Adjust PCM volume level */
   counter += CODEC_IO_Write(DeviceAddr, CS43L22_REG_PCMA_VOL, 0x0A);
   counter += CODEC_IO_Write(DeviceAddr, CS43L22_REG_PCMB_VOL, 0x0A);
-  
+
   /* Return communication control value */
   return counter;  
 }

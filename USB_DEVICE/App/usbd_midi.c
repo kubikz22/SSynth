@@ -62,6 +62,7 @@ __ALIGN_BEGIN static uint8_t USBD_MIDI_CfgDesc[] __ALIGN_END =
 
 /* ── Receive buffer ───────────────────────────────────────────────────────── */
 static uint8_t midi_rx_buf[MIDI_EPOUT_SIZE];
+static MIDI_ReceiveCallback_t midi_rx_callback = NULL;
 
 /* ── Class callbacks ──────────────────────────────────────────────────────── */
 static uint8_t USBD_MIDI_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
@@ -108,6 +109,10 @@ static uint8_t *USBD_MIDI_GetDeviceQualifierDesc(uint16_t *length)
     (void)length;
     return NULL;
 }
+void MIDI_RegisterReceiveCallback(MIDI_ReceiveCallback_t cb)
+{
+    midi_rx_callback = cb;
+}
 
 USBD_ClassTypeDef USBD_MIDI = {
     USBD_MIDI_Init,
@@ -129,18 +134,9 @@ USBD_ClassTypeDef USBD_MIDI = {
 /* ── Parse incoming USB MIDI packets and call NoteOn/Off ─────────────────── */
 uint8_t MIDI_DataRx(uint8_t *msg, uint32_t len)
 {
-    for (uint32_t i = 0; i + 3 < len; i += 4) {
-        uint8_t status   = msg[i + 1];
-        uint8_t note     = msg[i + 2];
-        uint8_t velocity = msg[i + 3];
-        uint8_t msg_type = status & 0xF0;
-        uint8_t channel  = status & 0x0F;
-
-        if (msg_type == 0x90 && velocity > 0) {
-            MIDI_NoteOn(channel, note, velocity);
-        } else if (msg_type == 0x80 || (msg_type == 0x90 && velocity == 0)) {
-            MIDI_NoteOff(channel, note);
-        }
-    }
+	if (midi_rx_callback != NULL)
+	{
+		midi_rx_callback(msg, len);
+	}
     return USBD_OK;
 }

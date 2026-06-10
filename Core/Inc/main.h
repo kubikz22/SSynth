@@ -28,10 +28,11 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
-
+#include "audio_settings.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+//#include "synth_core.h"
+//#include "midi_event.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -54,8 +55,8 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
-void MIDI_NoteOn(uint8_t channel, uint8_t note, uint8_t velocity);
-void MIDI_NoteOff(uint8_t channel, uint8_t note);
+//void MIDI_NoteOn(MidiEvent_t evt);
+//void MIDI_NoteOff(MidiEvent_t evt);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

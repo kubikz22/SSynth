@@ -262,20 +262,20 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
     /* USB MIDI packets are always 4 bytes */
-    for (uint32_t i = 0; i + 3 < *Len; i += 4) {
-        uint8_t status   = Buf[i + 1];
-        uint8_t note     = Buf[i + 2];
-        uint8_t velocity = Buf[i + 3];
-        uint8_t msg_type = status & 0xF0;
-        uint8_t channel  = status & 0x0F;
-
-        if (msg_type == 0x90 && velocity > 0) {
-            MIDI_NoteOn(channel, note, velocity);
-        }
-        else if (msg_type == 0x80 || (msg_type == 0x90 && velocity == 0)) {
-            MIDI_NoteOff(channel, note);
-        }
-    }
+//    for (uint32_t i = 0; i + 3 < *Len; i += 4) {
+//        uint8_t status   = Buf[i + 1];
+//        uint8_t note     = Buf[i + 2];
+//        uint8_t velocity = Buf[i + 3];
+//        uint8_t msg_type = status & 0xF0;
+//        uint8_t channel  = status & 0x0F;
+//
+//        if (msg_type == 0x90 && velocity > 0) {
+//            MIDI_NoteOn(channel, note, velocity);
+//        }
+//        else if (msg_type == 0x80 || (msg_type == 0x90 && velocity == 0)) {
+//            MIDI_NoteOff(channel, note);
+//        }
+//    }
 
     USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
     USBD_CDC_ReceivePacket(&hUsbDeviceFS);

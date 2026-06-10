@@ -10,5 +10,7 @@
 extern USBD_ClassTypeDef USBD_MIDI;
 
 uint8_t MIDI_DataRx(uint8_t *msg, uint32_t len);
+typedef void (*MIDI_ReceiveCallback_t)(uint8_t *data, uint32_t len);
 
+void MIDI_RegisterReceiveCallback(MIDI_ReceiveCallback_t cb);
 #endif
