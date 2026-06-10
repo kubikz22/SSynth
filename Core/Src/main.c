@@ -435,7 +435,7 @@ void fill_buffer(uint32_t start_frame, uint32_t num_frames)
 
             float phase_inc = (voices[v].frequency / SAMPLE_RATE) * WAVETABLE_LENGTH;
             mixed += voices[v].env_amplitude * voices[v].volume
-                     * wavetable[(uint32_t)voices[v].phase];
+                     * wavetable[(uint32_t)voices[v].phase % WAVETABLE_LENGTH];
 
             voices[v].phase += phase_inc;
             if (voices[v].phase >= WAVETABLE_LENGTH)
@@ -855,7 +855,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 6, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
   /*Configure GPIO pin : BOOT1_Pin */
@@ -894,7 +894,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(MEMS_INT2_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 6, 0);
+
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
@@ -1002,19 +1002,19 @@ void OnMIDIReceive(uint8_t *msg, uint32_t len)
 
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-//	if (GPIO_Pin == B1_Pin) {
-//		static uint32_t last_press = 0;
-//		uint32_t now = HAL_GetTick();
-//		if (now - last_press < 300) return;  // ignore within 300ms
-//		last_press = now;
-//
-//		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-//		vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
-//		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-//	}
 	if (GPIO_Pin == B1_Pin) {
-		HAL_GPIO_TogglePin(GPIOD, LD4_Pin);
+		static uint32_t last_press = 0;
+		uint32_t now = HAL_GetTick();
+		if (now - last_press < 300) return;  // ignore within 300ms
+		last_press = now;
+
+		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+		vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
+//	if (GPIO_Pin == B1_Pin) {
+//		HAL_GPIO_TogglePin(GPIOD, LD4_Pin);
+//	}
 }
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
     // breakpoint here or blink an LED

@@ -241,4 +241,9 @@ void HardFault_Decode(uint32_t *stack)
     // in your debugger's "Variables" or "Expressions" window
     while(1);
 }
+
+void EXTI0_IRQHandler(void)
+{
+	HAL_GPIO_EXTI_IRQHandler(B1_Pin);
+}
 /* USER CODE END 1 */
