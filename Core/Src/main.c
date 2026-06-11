@@ -67,12 +67,12 @@ const osThreadAttr_t defaultTask_attributes = {
 osThreadId_t debugUartTaskHandle;
 const osThreadAttr_t debugTask_attributes = {
   .name = "DebugUART",
-  .stack_size = 512 * 4,   // 512 words = 2KB — enough for vsnprintf
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 const osThreadAttr_t audioInitTask_attributes = {
   .name = "AudioInit",
-  .stack_size = 512 * 4,   // 512 words = 2KB — enough for vsnprintf
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 osThreadId_t midiTaskHandle;
@@ -129,13 +129,11 @@ typedef struct {
     float attack_rate;     // amplitude increase per sample
     float release_rate;    // amplitude decrease per sample
 } Voice;
-#define ATTACK_MS   10.0f
-#define RELEASE_MS  20.0f
+
 #define MAX_VOICES 4
 
 #define UNISON_VOICES     16
-#define DETUNE_CENTS      50.0f   // total detune spread in cents (±7.5 cents)
-
+#define DETUNE_CENTS      10.0f
 
 Voice voices[MAX_VOICES] = {0};
 float MIDI_to_frequency(uint8_t note);
@@ -151,36 +149,30 @@ typedef enum {
 volatile WavetableType current_wavetable = WT_SINE;
 typedef struct {
     const char *name;
-    void (*fill_wavetable)(void);   // function pointer to wavetable generator
+    void (*fill_wavetable)(void);
     float reverb_decay;
     uint32_t reverb_delay_samples;
     float attack_ms;
     float release_ms;
 } SynthPreset;
-// 1. Super Saw (your current one) — keep as-is
+
 void wt_supersaw(void) {
 	for (int i = 0; i < WAVETABLE_LENGTH; i++)
 		wavetable[i] = 0.0f;
 
 	for (int u = 0; u < UNISON_VOICES; u++) {
-		// spread voices evenly from -DETUNE_CENTS/2 to +DETUNE_CENTS/2
 		float detune_cents = -DETUNE_CENTS * 0.5f
 						   + (DETUNE_CENTS * u) / (float)(UNISON_VOICES - 1);
 
-		// convert cents to a frequency ratio
 		float ratio = powf(2.0f, detune_cents / 1200.0f);
 
-		// fill one detuned saw into the wavetable
 		for (int i = 0; i < WAVETABLE_LENGTH; i++) {
 			float t = (float)i / (float)WAVETABLE_LENGTH;
-			// fractional phase position with detuned ratio, wrapped
 			float pos = fmodf(t * ratio, 1.0f);
-			// saw wave: -1 to +1
 			wavetable[i] += 2.0f * pos - 1.0f;
 		}
 	}
 
-	// normalize to -1..+1
 	float peak = 0.0f;
 	for (int i = 0; i < WAVETABLE_LENGTH; i++) {
 		float abs_val = fabsf(wavetable[i]);
@@ -192,21 +184,16 @@ void wt_supersaw(void) {
 	}
 }
 
-// 2. Pure Sine
 void wt_sine(void) {
     for (int i = 0; i < WAVETABLE_LENGTH; i++)
         wavetable[i] = sinf((2.0f * M_PI * i) / WAVETABLE_LENGTH);
 }
 
-// 3. Square (with slight smoothing to reduce aliasing)
 void wt_square(void) {
     for (int i = 0; i < WAVETABLE_LENGTH; i++)
         wavetable[i] = (i < WAVETABLE_LENGTH / 2) ? 1.0f : -1.0f;
 }
 
-// 4. Pluck/Karplus-Strong approximation via wavetable
-//    (decaying sine — better done in fill_buffer, but a
-//    damped sine gives a pluck-like timbre from a wavetable)
 void wt_triangle(void) {
     for (int i = 0; i < WAVETABLE_LENGTH; i++) {
         float t = (float)i / WAVETABLE_LENGTH;
@@ -214,19 +201,23 @@ void wt_triangle(void) {
     }
 }
 
-// Make reverb parameters runtime-adjustable
-//typedef struct {
-//    float   decay;
-//    uint32_t delay_samples;
-//} ReverbParams;
+typedef struct {
+    float   decay;
+    uint32_t delay_samples;
+} ReverbParams;
 
-//volatile ReverbParams active_reverb = { REVERB_DECAY, REVERB_DELAY_MAX };
+
+#define REVERB_DELAY_MAX 9600
+#define REVERB_DECAY 0.5f
+
+
+volatile ReverbParams active_reverb = { REVERB_DECAY, REVERB_DELAY_MAX };
 
 static const SynthPreset presets[] = {
     //  name          fill_fn       reverb_decay  delay_ms→samples   attack  release
-    { "SuperSaw",   wt_supersaw,   0.5f,          4800,              10.0f,  10.0f },
-    { "Sine Pad",   wt_sine,       0.75f,         9600,              80.0f,  400.0f },  // long reverb, slow attack
-    { "Square",     wt_square,     0.2f,           960,               5.0f,   50.0f },  // tight/dry
+    { "SuperSaw",   wt_supersaw,   0.7f,          4800,              10.0f,  10.0f },
+    { "Sine Pad",   wt_sine,       0.75f,         9600,              1000.0f,  1000.0f },
+    { "Square",     wt_square,     0.2f,           960,               5.0f,   50.0f },
     { "Triangle",   wt_triangle,   0.4f,          2400,              15.0f,  150.0f },
 };
 #define NUM_PRESETS (sizeof(presets) / sizeof(presets[0]))
@@ -243,6 +234,27 @@ uint16_t float2uint16(float f)
     if (f >  1.0f) f =  1.0f;
     if (f < -1.0f) f = -1.0f;
     return (uint16_t)(int16_t)(f * 32767.0f);
+}
+
+static float reverb_buffer[REVERB_DELAY_MAX] = {0};
+static uint32_t reverb_write_idx = 0;
+
+float process_reverb(float sample)
+{
+    uint32_t delay  = active_reverb.delay_samples;
+    float    decay  = active_reverb.decay;
+
+    if (delay == 0)            delay = 1;
+    if (delay > REVERB_DELAY_MAX) delay = REVERB_DELAY_MAX;
+
+    uint32_t read_idx = (reverb_write_idx + REVERB_DELAY_MAX - delay) % REVERB_DELAY_MAX;
+    float delayed = reverb_buffer[read_idx];
+
+    reverb_buffer[reverb_write_idx] = sample + delayed * decay;
+
+    reverb_write_idx = (reverb_write_idx + 1) % REVERB_DELAY_MAX;
+
+    return sample * 0.7f + delayed * 0.3f;
 }
 void fill_buffer(uint32_t start_frame, uint32_t num_frames)
 {
@@ -293,6 +305,8 @@ void fill_buffer(uint32_t start_frame, uint32_t num_frames)
         if (active_count > 0)
             mixed /= MAX_VOICES;
 
+        mixed = process_reverb(mixed);
+
         uint16_t sample = float2uint16(mixed);
         audio_buffer[2 * frame]     = sample;
         audio_buffer[2 * frame + 1] = sample;
@@ -319,8 +333,7 @@ void init_audio(void) {
 	}
 
 	fill_buffer(0, AUDIO_BUFFER_SAMPLES);
-
-//	fill_buffer(AUDIO_BUFFER_SAMPLES, AUDIO_BUFFER_SAMPLES);
+	fill_buffer(AUDIO_BUFFER_SAMPLES, AUDIO_BUFFER_SAMPLES);
 
 	BSP_AUDIO_OUT_Play(&(audio_buffer[0]), AUDIO_BUFFER_SIZE * sizeof(uint16_t));
 }
@@ -747,16 +760,8 @@ void MidiTask(void *pv) {
         MidiEvent_t evt;
         xQueueReceive(midiQueue, &evt, portMAX_DELAY);
 
-//		Debug_Print("[MIDI] note=%d vel=%d ch=%d\r\n",
-//					evt.note, evt.velocity, evt.channel);
-
 		if (evt.status >= 0x80 && evt.status <= 0x8F)
 		{
-//			Debug_Print("[MIDI] note-off note=%d\r\n", evt.note);
-//			for (int v = 0; v < MAX_VOICES; v++) {
-//				Debug_Print("  voice %d: active=%d note=%d state=%d\r\n",
-//					v, voices[v].active, voices[v].midi_note, voices[v].env_state);
-//			}
 			for (int v = 0; v < MAX_VOICES; v++) {
 				if (voices[v].active &&
 					voices[v].midi_note == evt.note &&
@@ -788,12 +793,10 @@ void MidiTask(void *pv) {
 
 			    taskENTER_CRITICAL();
 
-			    // first: find a free voice
 			    for (int v = 0; v < MAX_VOICES; v++) {
 			        if (!voices[v].active) { target = v; break; }
 			    }
 
-			    // second: steal quietest releasing voice
 			    if (target == -1) {
 			        for (int v = 0; v < MAX_VOICES; v++) {
 			            if (voices[v].env_state == ENV_RELEASE &&
@@ -804,7 +807,6 @@ void MidiTask(void *pv) {
 			        }
 			    }
 
-			    // last resort: steal voice 0
 			    if (target == -1) target = 0;
 
 			    voices[target].frequency     = freq;
@@ -832,7 +834,7 @@ void OnMIDIReceive(uint8_t *msg, uint32_t len)
 {
     for (uint32_t i = 0; i + 3 < len; i += 4) {
         uint8_t status = msg[i + 1];
-        // skip non-note messages before even queuing
+
         uint8_t msg_type = status & 0xF0;
         if (msg_type != 0x80 && msg_type != 0x90) continue;
 
@@ -853,18 +855,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if (GPIO_Pin == B1_Pin) {
 		static uint32_t last_press = 0;
 		uint32_t now = HAL_GetTick();
-		if (now - last_press < 300) return;  // ignore within 300ms
+		if (now - last_press < 300) return;
 		last_press = now;
 
 		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 		vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
-}
-void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
-    // breakpoint here or blink an LED
-    __BKPT(0);
-    while(1);
 }
 /* USER CODE END 4 */
 
@@ -886,10 +883,9 @@ void StartDefaultTask(void *argument)
   for (;;) {
           ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-          audio_muted = 1;          // fill_buffer outputs silence immediately
+          audio_muted = 1;
 
           __DMB();
-          // Kill all active voices so old notes don't bleed into new preset
           for (int v = 0; v < MAX_VOICES; v++) {
               voices[v].active = 0;
               voices[v].env_state = ENV_IDLE;
@@ -897,10 +893,9 @@ void StartDefaultTask(void *argument)
           }
 
           current_preset_idx = (current_preset_idx + 1) % NUM_PRESETS;
-          init_wavetable();         // safe — DMA is still running but outputting 0
-
+          init_wavetable();
           __DMB();
-          audio_muted = 0;          // unmute — new wavetable is ready
+          audio_muted = 0;
       }
   /* USER CODE END 5 */
 }
